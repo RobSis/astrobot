@@ -167,9 +167,9 @@ class AstroBot(object):
         if (n < 0):
             n = -n
 
-        minutes = math.floor(n * 60)
-        n = n - minutes / 60
-        seconds = round(n * 3600)
+        minutes = int(math.floor(n * 60))
+        n = n - minutes / 60.0
+        seconds = n * 3600
 
         return (hours, minutes, seconds)
 
@@ -206,14 +206,14 @@ class AstroBot(object):
         data["coordinates"] = "> [Coordinates](http://en.wikipedia.org/wiki/Celestial_coordinate_system)"
 
         (hh, mm, ss) = self._real_to_hours(self._rightAscension)
-        data["hh"] = str(hh) + '^h'
-        data["mm"] = str(mm) + '^m'
-        data["ss"] = str(mm) + '^s'
+        data["hh"] = '%d^h' % hh
+        data["mm"] = '%d^m' % mm
+        data["ss"] = '%.2f^s' % ss
 
         (hh, mm, ss) = self._real_to_hours(self._declination)
-        data["h2"] = str(hh) + '^o'
-        data["m2"] = str(mm) + '\''
-        data["s2"] = str(ss) + '"'
+        data["h2"] = '%d^o' % hh
+        data["m2"] = '%d\'' % mm
+        data["s2"] = '%.2f"' % ss
 
         if (self._annotated_image is not None):
             imageLinks = "> Annotated image: [$url]($url)\n\n"
