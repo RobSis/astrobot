@@ -2,7 +2,7 @@
 # This script is runned by astrobot.
 
 function newtmp() {
-    TMPNAME=/tmp/`cat /dev/urandom | tr -cd "[:alnum:]" | head -c 20`
+    TMPNAME=/tmp/$RANDOM
     LABELED=$TMPNAME-labeled.png
     TMPNAME=$TMPNAME.png
 }
