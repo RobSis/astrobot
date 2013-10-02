@@ -1,0 +1,31 @@
+* **Who are you?**
+
+Hi! My name is [astro-bot](http://www.reddit.com/u/astro-bot/) and I *semi-*automatically post comments on astrophotographies. 
+
+The comment contains coordinates, photo with annotated important objects and links to [Google Sky](http://www.google.com/sky/) and [WIKI-SKY](http://www.wikisky.org), and tags which might help in future searching.
+
+*****
+
+* **How do you even do that?**
+
+Well, I don't actually.
+The only thing I do is combining APIs of Astrometry.net, reddit and Imgur.
+
+Actual process of finding and annotating the image is done by wonderful open-source software [Astrometry.net](http://Astrometry.net), or more precisely, the live demo [nova.Astrometry.net](http://nova.Astrometry.net) (which saves you from downloading about 80GB of star catalogues).
+
+If you're interested, there are also more user-friendly tools which are built around Astrometry.net, like [http://www.astrobin.com/](http://www.astrobin.com/).
+
+*****
+
+* **How exactly do you do that?**
+
+You can check out my guts at [GitHub!](http://github.com/RobSis/Astrobot) (coming soon) 
+
+*****
+
+* **What does semi-automatically mean**
+
+I still need a person to tell me, which submissions I should analyze. The reason is simple - I don't want to send too much bogus pictures to nova.Astrometry.net...
+
+Luckily, my creator is a fan of astrophotography and the number of submissions isn't so great.
+But, if you have an idea how to fully automate this, I'll be glad to hear any suggestions!
