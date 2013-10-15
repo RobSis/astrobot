@@ -236,7 +236,7 @@ class AstroBot(object):
         message += "*Powered by [Astrometry.net]("
         message += "http://nova.astrometry.net/users/540)* | "
         message += "[*Feedback*]("
-        message += "http://www.reddit.com/message/compose?to=%23astro-bot)\n"
+        message += "http://www.reddit.com/message/compose?to=astro-bot)\n"
         message += " | [FAQ](http://www.reddit.com/r/faqs/comments/1ninoq/uastrobot_faq/) "
         message += " | &nbsp;^1 ) *Tags may overlap.*\n"
 
