@@ -8,6 +8,7 @@ import sys
 import math
 import time
 import argparse
+import urlparse
 import subprocess
 from string import Template
 
@@ -20,17 +21,9 @@ import credentials
 
 class AstroBot(object):
     def __init__(self):
-        # Astrometry API
-        self.api = client.client.Client()
-        self.api.login(credentials.ASTROMETRY_ID)
-
-        # Reddit API
-        self.praw = praw.Reddit(user_agent = credentials.USER_AGENT)
-        self.praw.login(credentials.REDDIT_USER, credentials.REDDIT_PASSWORD)
-
         # Imgur API
         self.imgur = pyimgur.Imgur(credentials.IMGUR_CLIENT_ID, client_secret=credentials.IMGUR_CLIENT_SECRET)
-        print("Get PIN on " + credentials.IMGUR_AUTH_URL)
+        print "Get PIN on", credentials.IMGUR_AUTH_URL
         authorized = False
         while (not authorized):
             sys.stdout.flush()
@@ -39,7 +32,15 @@ class AstroBot(object):
                 self.imgur.exchange_pin(pin)
                 authorized = True
             except:
-                print("Wrong PIN or other error. Authorize again.")
+                print "Wrong PIN or other error. Authorize again."
+
+        # Astrometry API
+        self.api = client.client.Client()
+        self.api.login(credentials.ASTROMETRY_ID)
+
+        # Reddit API
+        self.praw = praw.Reddit(user_agent = credentials.USER_AGENT)
+        self.praw.login(credentials.REDDIT_USER, credentials.REDDIT_PASSWORD)
 
         self._rightAscension = 0
         self._declination = 0
@@ -47,23 +48,38 @@ class AstroBot(object):
         self._tags = []
         self._annotated_image = ""
 
-    def process(self, url, image_url=None):
-        thread = self.praw.get_submission(url=url)
-        self.author = thread.author
-        if (image_url is not None):
-            self.image = image_url
+        # set of skipped submissions
+        self.skipped = []
+
+        # blacklist of words on /r/astrophotography
+        self.blacklist = ["moon", "sun", "mercury", "venus", "mars", "jupiter"]
+
+        # whitelist of words on /r/astronomy+space
+        self.whitelist = ["galaxy", "comet", "nebula", "constellation", "iss",
+                     "sky", "skies"]
+
+    def _process(self, thread):
+        if self._check_condition(thread):
+            self.image = self._parse_url(thread.url)
+            if (self.image is None):
+                print "[WARN]:", "Submission link doesn's seem to be an image"
+                self.skipped.append(thread.id)
+                thread.save()
+                return
         else:
-            self.image = thread.url
+            print "[WARN]:", "Decided not to process the submission"
+            self.skipped.append(thread.id)
+            return
 
         job_id = self._upload(self.image)
         success = self._wait_for_job(job_id)
         if (success):
-            self.processSolved(url, job_id)
+            self._process_solved(thread, job_id)
         else:
-            print 'Failed to solve the picture.'
+            print "[WARN]:", "Failed to solve the picture."
+            thread.save()
 
-    def processSolved(self, url, job_id):
-        thread = self.praw.get_submission(url=url)
+    def _process_solved(self, thread, job_id):
         self.author = thread.author
         self.job_id = job_id
 
@@ -75,10 +91,57 @@ class AstroBot(object):
         self._parse_kml("http://nova.astrometry.net/kml_file/" + self.job_id)
         self._annotated_image = self._upload_annotated()
 
-        # Post to reddit
-        thread.add_comment(self._create_comment())
-        thread.upvote() # can I do that?
-        thread.save()
+        if (self._annotated_image is not None):
+            # Post to reddit
+            thread.add_comment(self._create_comment())
+            thread.upvote() # can I do that?
+            thread.save()
+
+    def _check_condition(self, submission):
+        "Decide whether to process the submission"
+        if submission.id in self.skipped:
+            return False
+
+        if submission.saved:
+            return False
+
+        blacklist_matches = sum(word in submission.title.lower() for word in self.blacklist)
+        whitelist_matches = sum(word in submission.title.lower() for word in self.whitelist)
+        if submission.subreddit.display_name == "astrophotography":
+            if blacklist_matches == 1 and whitelist_matches == 0:
+                return False
+        else:
+            if whitelist_matches == 0:
+                return False
+
+        for comment in praw.helpers.flatten_tree(submission.comments):
+            if "astrometry.net" in comment.body.lower():
+                return False
+
+        return True
+
+    def _parse_url(self, rawUrl):
+        url = urlparse.urlparse(rawUrl)
+
+        if url.netloc == "i.imgur.com":
+            return rawUrl
+
+        # get direct url from imgur
+        if url.netloc == "imgur.com" and ("a/" not in url.path):
+            newloc = "i." + url.netloc
+            newpath = url.path + ".jpg"
+            newUrl = urlparse.ParseResult(url.scheme, newloc, newpath,
+                        url.params, url.query, url.fragment)
+
+            return newUrl.geturl()
+
+        # TODO: get direct url from flickr
+
+        p = url.path.lower()
+        if p.endswith(".jpg") or p.endswith(".jpeg") or p.endswith(".png"):
+            return rawUrl
+
+        return None
 
     def _upload(self, image_url):
         """Uploads the image on given url to Astrometry and waits for job id."""
@@ -92,8 +155,8 @@ class AstroBot(object):
 
         stat = result['status']
         if stat != 'success':
-            print 'Upload failed: status', stat
-            sys.exit(-1)
+            print "[WARN]:", "Upload failed: status", stat
+            return
 
         sub_id = result['subid']
         job_id = None
@@ -121,19 +184,22 @@ class AstroBot(object):
             uploaded_image = self.imgur.upload_image(path=self.job_id + ".png", album=credentials.ALBUM_ID)
             return uploaded_image.link
         except:
-            print("Imgur error")
-            sys.exit(-1)
+            print "[WARN]:", "Imgur error. Image not uploaded."
+            return None
 
     def _wait_for_job(self, job_id):
         """Wait for the result of job."""
 
-        while True:
+        tries = 0
+        while tries < 40:  # don't spend too much time on solving
             stat = self.api.job_status(job_id, justdict=True)
             if stat.get('status','') in ['success']:
                 return True
             if stat.get('status','') in ['failure']:
                 return False
             time.sleep(5)
+            tries += 1
+        return False
 
     def _parse_kml(self, path):
         """Download KML file of solved job and parse it."""
@@ -222,6 +288,8 @@ class AstroBot(object):
 
         if (len(self._tags) > 0):
             data["tags"] = "> Tags^1: *" + ", ".join(self._tags) + "*\n\n"
+        else:
+            data["tags"] = ""
 
         data["google"] = "[Google sky](" + self._googlesky_link() + ")"
         data["wikisky"] = "[WIKISKY.ORG](" + self._wikisky_link() + ")"
@@ -236,12 +304,32 @@ class AstroBot(object):
         message += "*Powered by [Astrometry.net]("
         message += "http://nova.astrometry.net/users/540)* | "
         message += "[*Feedback*]("
-        message += "http://www.reddit.com/message/compose?to=%23astro-bot)\n"
+        message += "http://www.reddit.com/message/compose?to=astro-bot)\n"
         message += " | [FAQ](http://www.reddit.com/r/faqs/comments/1ninoq/uastrobot_faq/) "
         message += " | &nbsp;^1 ) *Tags may overlap.*\n"
 
         return Template(message).safe_substitute(data)
 
+    def run(self):
+        running = True
+        while running:
+            try:
+                subreddits = self.praw.get_subreddit("astrophotography+astronomy+space")
+                for submission in subreddits.get_new(limit = 100):
+                    print "[INFO]:", "Processing submission", submission.permalink
+                    if self._check_condition(submission):
+                        self._process(submission)
+                    else:
+                        print "[WARN]:", "Decided not to process the submission"
+                        self.skipped.append(submission.id)
+                    print
+
+                print "[INFO]:", "sleeping 3 minutes"
+                time.sleep(180)
+            except praw.errors.APIException, e:
+                print e
+                print "[INFO]:", "sleeping 30 sec"
+                sleep(30)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='astrobot')
@@ -257,18 +345,9 @@ if __name__ == '__main__':
             help="Process already solved job")
     args = parser.parse_args()
 
-    bot = AstroBot()
-    if (args.url is not None):
-        if (args.jobid is not None):
-            bot.processSolved(args.url, args.jobid)
-        else:
-            bot.process(args.url, args.image)
-    else:
-        while (True):
-            try:
-                line = raw_input("Enter reddit thread url: ")
-                bot.process(line)
-                print("Done.")
-            except KeyboardInterrupt:
-                break
-        print("Good bye!")
+    try:
+        bot = AstroBot()
+        bot.run()
+    except (KeyboardInterrupt, EOFError), e:
+        print "\n(quit)"
+        sys.exit(-1)
