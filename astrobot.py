@@ -61,23 +61,18 @@ class AstroBot(object):
         self.skipped = []
 
         # blacklist of words on /r/astrophotography
-        self.blacklist = ["moon", "sun", "mercury", "venus", "mars", "jupiter"]
+        self.blacklist = ["moon", "lunar", "sun", "solar", "eclipse", "mercury", "venus", "mars", "jupiter", "uranus", "neptune"]
 
-        # whitelist of words on /r/astronomy+space
-        self.whitelist = ["galaxy", "comet", "nebula", "constellation", "iss",
-                     "sky", "skies"]
+        # whitelist of words on /r/astronomy+space+spaceporn
+        self.whitelist = ["galaxy", "ngc", "comet", "nebula", "constellation", "iss",
+                     "ison", "sky", "skies"]
 
     def _process(self, thread):
-        if self._check_condition(thread):
-            self.image = self._parse_url(thread.url)
-            if (self.image is None):
-                print "[WARN]:", "Submission link doesn's seem to be an image"
-                self.skipped.append(thread.id)
-                thread.save()
-                return
-        else:
-            print "[WARN]:", "Decided not to process the submission"
+        self.image = self._parse_url(thread.url)
+        if (self.image is None):
+            print "[WARN]:", "Submission link doesn's seem to be an image"
             self.skipped.append(thread.id)
+            thread.save()
             return
 
         job_id = self._upload(self.image)
@@ -136,9 +131,10 @@ class AstroBot(object):
             return rawUrl
 
         # get direct url from imgur
-        if url.netloc == "imgur.com" and ("a/" not in url.path):
+        if "imgur.com" in url.netloc and ("a/" not in url.path):
             newloc = "i." + url.netloc
             newpath = url.path + ".jpg"
+            newpath = newpath.replace("gallery/","")
             newUrl = urlparse.ParseResult(url.scheme, newloc, newpath,
                         url.params, url.query, url.fragment)
 
@@ -323,7 +319,7 @@ class AstroBot(object):
         running = True
         while running:
             try:
-                subreddits = self.praw.get_subreddit("astrophotography+astronomy+space")
+                subreddits = self.praw.get_subreddit("astrophotography+astronomy+space+spaceporn")
                 for submission in subreddits.get_new(limit = 100):
                     print "[INFO]:", "Processing submission", submission.permalink
                     if self._check_condition(submission):
@@ -331,6 +327,12 @@ class AstroBot(object):
                     else:
                         print "[WARN]:", "Decided not to process the submission"
                         self.skipped.append(submission.id)
+                    print
+
+                for submission in self.praw.user.get_hidden():
+                    submission.unhide()
+                    print "[INFO]:", "Processing submission", submission.permalink
+                    self._process(submission)
                     print
 
                 print "[INFO]:", "sleeping 3 minutes"
