@@ -16,6 +16,7 @@ import urllib2
 import zipfile
 import tempfile
 from xml.dom.minidom import parseString
+from lxml import etree
 
 import credentials
 
@@ -140,7 +141,22 @@ class AstroBot(object):
 
             return newUrl.geturl()
 
-        # TODO: get direct url from flickr
+        # get direct url from flickr
+        if "flickr.com" in url.netloc:
+            path = filter(lambda x : x != '', url.path.split('/'))
+            if path[0] == 'photos' and len(path) >= 3:
+                newpath = '/photos/%s/%s/sizes/l' % (path[1], path[2])
+                newUrl = urlparse.ParseResult(url.scheme, url.netloc, newpath,
+                        url.params, url.query, url.fragment)
+
+                try:
+                    file = urllib2.urlopen(newUrl.geturl())
+                    tree = etree.HTML(file.read())
+                    staticUrl = tree.xpath('//div[@id="allsizes-photo"]/img/@src')
+                    if len(staticUrl):
+                        return staticUrl[0]
+                except:
+                    pass
 
         p = url.path.lower()
         if p.endswith(".jpg") or p.endswith(".jpeg") or p.endswith(".png"):
