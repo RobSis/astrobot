@@ -17,6 +17,7 @@ import zipfile
 import tempfile
 from xml.dom.minidom import parseString
 from lxml import etree
+import requests
 
 import credentials
 
@@ -353,8 +354,7 @@ class AstroBot(object):
 
                 print "[INFO]:", "sleeping 3 minutes"
                 time.sleep(180)
-            except praw.errors.APIException, e:
-                print e
+            except (praw.errors.APIException, requests.exceptions.HTTPError):
                 print "[INFO]:", "sleeping 30 sec"
                 sleep(30)
 
