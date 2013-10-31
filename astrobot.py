@@ -86,7 +86,9 @@ class AstroBot(object):
             thread.save()
 
     def _process_solved(self, thread, job_id):
-        self.author = thread.author
+        self.author = str(thread.author)
+        if ("apod." in thread.url.lower()):
+            self.author = ""
         self.job_id = job_id
 
         self._tags = self.api.send_request('jobs/%s/tags' % self.job_id, {})["tags"]
@@ -199,7 +201,7 @@ class AstroBot(object):
     def _upload_annotated(self):
         """Get annotated image from astrometry, put label on it and upload to imgur"""
 
-        subprocess.check_call(["./annotate.sh", self.job_id, str(self.author)])
+        subprocess.check_call(["./annotate.sh", self.job_id, self.author])
 
         self.imgur.refresh_access_token()
         try:

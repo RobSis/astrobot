@@ -12,7 +12,10 @@ AUTHOR=$2
 
 newtmp
 wget "http://nova.astrometry.net/annotated_display/$JOBID" -O$TMPNAME
-convert -quality 99 -background '#000000a0' -fill white label:"image: $AUTHOR@reddit | Astrometry.net" miff:- | composite -gravity southEast - $TMPNAME $LABELED
+if [ "x$AUTHOR" = "x" ]; then
+    mv $TMPNAME $JOBID.png
+else
+    convert -quality 99 -background '#000000a0' -fill white label:"image: $AUTHOR@reddit | Astrometry.net" miff:- | composite -gravity southEast - $TMPNAME $LABELED
+    mv $LABELED $JOBID.png
+fi
 rm -f $TMPNAME
-mv $LABELED $JOBID.png
-
