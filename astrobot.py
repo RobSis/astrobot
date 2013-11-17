@@ -87,6 +87,8 @@ class AstroBot(object):
 
     def _process_solved(self, thread, job_id):
         self.author = str(thread.author)
+        if ("astrophotography" not in str(thread.subreddit)):
+            self.author = ""
         if ("apod." in thread.url.lower()):
             self.author = ""
         self.job_id = job_id
