@@ -62,7 +62,7 @@ class AstroBot(object):
         # set of skipped submissions
         self.skipped = []
 
-        # blacklist of words on /r/astrophotography
+        # blacklist of words on /r/astrophotography+apod
         self.blacklist = ["moon", "lunar", "sun", "solar", "eclipse", "mercury", "venus", "mars", "jupiter", "uranus", "neptune"]
 
         # whitelist of words on /r/astronomy+space+spaceporn
@@ -74,7 +74,6 @@ class AstroBot(object):
         if (self.image is None):
             print "[WARN]:", "Submission link doesn's seem to be an image"
             self.skipped.append(thread.id)
-            thread.save()
             return
 
         job_id = self._upload(self.image)
@@ -87,7 +86,7 @@ class AstroBot(object):
 
     def _process_solved(self, thread, job_id):
         self.author = str(thread.author)
-        if ("astrophotography" not in str(thread.subreddit)):
+        if ("astrophotography" not in thread.subreddit.display_name.lower()):
             self.author = ""
         if ("apod." in thread.url.lower()):
             self.author = ""
@@ -107,6 +106,9 @@ class AstroBot(object):
             thread.upvote() # can I do that?
             thread.save()
 
+            # Save the comment
+
+
     def _check_condition(self, submission):
         "Decide whether to process the submission"
         if submission.id in self.skipped:
@@ -117,7 +119,8 @@ class AstroBot(object):
 
         blacklist_matches = sum(word in submission.title.lower() for word in self.blacklist)
         whitelist_matches = sum(word in submission.title.lower() for word in self.whitelist)
-        if submission.subreddit.display_name == "astrophotography":
+        if submission.subreddit.display_name.lower() == "astrophotography" or\
+                submission.subreddit.display_name.lower() == "apod":
             if blacklist_matches == 1 and whitelist_matches == 0:
                 return False
         else:
@@ -163,6 +166,16 @@ class AstroBot(object):
                 except:
                     pass
 
+        if "apod.nasa.gov" in url.netloc:
+            try:
+                file = urllib2.urlopen(url.geturl())
+                tree = etree.HTML(file.read())
+                directUrl = tree.xpath('//img/@src')
+                if len(directUrl):
+                    return "http://apod.nasa.gov/apod/" + directUrl[0]
+            except:
+                pass
+
         p = url.path.lower()
         if p.endswith(".jpg") or p.endswith(".jpeg") or p.endswith(".png"):
             return rawUrl
@@ -186,7 +199,8 @@ class AstroBot(object):
 
         sub_id = result['subid']
         job_id = None
-        while True:
+        tries = 0
+        while tries < 40:
             subStat = self.api.sub_status(sub_id, justdict=True)
             jobs = subStat.get('jobs',[])
             if len(jobs):
@@ -196,7 +210,9 @@ class AstroBot(object):
                 if j is not None:
                     job_id = j
                     break
+            print "sleeping 5s"
             time.sleep(5)
+            tries += 1
         return str(job_id)
 
     # TODO: rewrite to python
@@ -219,10 +235,11 @@ class AstroBot(object):
         tries = 0
         while tries < 40:  # don't spend too much time on solving
             stat = self.api.job_status(job_id, justdict=True)
-            if stat.get('status','') in ['success']:
+            if stat and stat.get('status','') in ['success']:
                 return True
-            if stat.get('status','') in ['failure']:
+            if stat and stat.get('status','') in ['failure']:
                 return False
+            print "sleeping 5s"
             time.sleep(5)
             tries += 1
         return False
@@ -340,7 +357,7 @@ class AstroBot(object):
         running = True
         while running:
             try:
-                subreddits = self.praw.get_subreddit("astrophotography+astronomy+space+spaceporn")
+                subreddits = self.praw.get_subreddit("astrophotography+astronomy+space+spaceporn+apod")
                 for submission in subreddits.get_new(limit = 100):
                     print "[INFO]:", "Processing submission", submission.permalink
                     if self._check_condition(submission):
@@ -360,7 +377,7 @@ class AstroBot(object):
                 time.sleep(180)
             except (praw.errors.APIException, requests.exceptions.HTTPError):
                 print "[INFO]:", "sleeping 30 sec"
-                sleep(30)
+                time.sleep(30)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='astrobot')
