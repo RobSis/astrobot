@@ -127,8 +127,10 @@ class AstroBot(object):
             if whitelist_matches == 0:
                 return False
 
+        submission.replace_more_comments(limit=16, threshold=1)
         for comment in praw.helpers.flatten_tree(submission.comments):
-            if "astrometry.net" in comment.body.lower():
+            if isinstance(comment, praw.objects.Comment) and \
+                    "astrometry.net" in comment.body.lower():
                 return False
 
         return True
