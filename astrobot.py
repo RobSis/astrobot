@@ -63,7 +63,7 @@ class AstroBot(object):
         self.whitelist = ["galaxy", "ngc", "comet", "nebula", "constellation", "iss",
                      "ison", "sky", "skies"]
 
-    def _process(self, thread):
+    def _process(self, thread, submission_id = None):
         """Process the reddit submission"""
         self.info = dict()
         self.info["rectascension"] = 0
@@ -75,17 +75,20 @@ class AstroBot(object):
         self.info["image_id"] = 0
         self.info["author"] = ""
 
-        imageURL = self._parse_url(thread.url)
-        if (imageURL is None):
-            print "[WARN]:", "Submission link doesn's seem to be an image"
-            self.skipped.append(thread.id)
-            return
+        if (not submission_id):
+            imageURL = self._parse_url(thread.url)
+            if (imageURL is None):
+                print "[WARN]:", "Submission link doesn's seem to be an image"
+                self.skipped.append(thread.id)
+                return
+            submission = self._upload(imageURL)
+        else:
+            submission = self.api.sub_status(submission_id, justdict=True)
 
-        (job_id, image_id) = self._upload(imageURL)
-        self.info["job_id"] = job_id
-        self.info["image_id"] = image_id
+        self.info["job_id"] = submission['jobs'][0]
+        self.info["image_id"] = submission['user_images'][0]
 
-        success = self._wait_for_job(job_id)
+        success = self._wait_for_job(self.info["job_id"])
         if (not success):
             print "[WARN]:", "Failed to solve the picture."
             thread.save()
@@ -97,7 +100,7 @@ class AstroBot(object):
         if ("apod." in thread.url.lower()):
             self.info["author"] = ""
 
-        self.info["tags"] = self.api.send_request('jobs/%s/tags' % job_id, {})["tags"]
+        self.info["tags"] = self.api.send_request('jobs/%s/tags' % self.info["job_id"], {})["tags"]
         # if there are too many tags, filter out stars
         if (len(self.info["tags"]) > 8):
             self.info["tags"] = filter(lambda x: x.find("star") == -1, self.info["tags"])
@@ -219,23 +222,21 @@ class AstroBot(object):
                     if j is not None:
                         break
                 if j is not None:
-                    job_id = j
-                    image_id = subStat['user_images'][0]
                     break
             print "sleeping 5s"
             time.sleep(5)
             tries += 1
-        return str(job_id), str(image_id)
+        return subStat
 
     # TODO: rewrite to python
     def _upload_annotated(self, info):
         """Get annotated image from astrometry, put label on it and upload to imgur"""
 
-        subprocess.check_call(["./annotate.sh", info["job_id"], info["author"]])
+        subprocess.check_call(["./annotate.sh", str(info["job_id"]), info["author"]])
 
         self.imgur.refresh_access_token()
         try:
-            uploaded_image = self.imgur.upload_image(path=info["job_id"] + ".png", album=credentials.ALBUM_ID)
+            uploaded_image = self.imgur.upload_image(path=str(info["job_id"]) + ".png", album=credentials.ALBUM_ID)
             return uploaded_image.link
         except:
             print "[WARN]:", "Imgur error. Image not uploaded."
@@ -259,7 +260,7 @@ class AstroBot(object):
     def _get_calibration(self, info):
         """Download KML file of solved job and parse it."""
 
-        path = "http://nova.astrometry.net/kml_file/" + info["job_id"]
+        path = "http://nova.astrometry.net/kml_file/" + str(info["job_id"])
         file = urllib2.urlopen(path)
         pkdata = file.read()
         tmp = tempfile.NamedTemporaryFile()
@@ -393,16 +394,32 @@ class AstroBot(object):
                 print "[INFO]:", "sleeping 30 sec"
                 time.sleep(30)
 
+    def post_solved(self, submission, thread):
+        """Post results of solved job to given thread."""
+        thread = self.praw.get_submission(url=thread)
+        self._process(thread, submission)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='astrobot')
     parser.add_argument(
             "-p", "--pin",
             help="Imgur PIN")
+    group = parser.add_argument_group('manually')
+    group.add_argument(
+            "-s", "--submission",
+            help="ID of submission")
+    group.add_argument(
+            "-t", "--thread",
+            help="Reddit thread URL")
     args = parser.parse_args()
 
     try:
         bot = AstroBot(pin=args.pin)
-        bot.run()
+        if (not args.submission or not args.thread):
+            bot.run()
+        else:
+            bot.post_solved(args.submission, args.thread)
     except (KeyboardInterrupt, EOFError), e:
         print "\n(quit)"
         sys.exit(-1)
