@@ -104,10 +104,11 @@ class AstroBot(object):
         if (len(self.info["tags"]) > 8):
             self.info["tags"] = filter(lambda x: x.find("star") == -1, self.info["tags"])
 
-        (ra, de, rg) = self._get_calibration(self.info)
+        (ra, de, radius, rg) = self._get_calibration(self.info)
         self.info["rectascension"] = ra
         self.info["declination"] = de
         self.info["range"] = rg
+        self.info["radius"] = radius
         self.info["annotated_image"] = self._upload_annotated(self.info)
 
         if (self.info["annotated_image"] is not None):
@@ -262,6 +263,7 @@ class AstroBot(object):
         calibration = self.api.send_request('jobs/%s/calibration' % info['job_id'])
         ra = calibration['ra']
         de = calibration['dec']
+        radius = calibration['radius']
 
         # taken from wcs2kml
         fd = urllib2.urlopen('http://nova.astrometry.net/extraction_image_full/' + str(info['job_id']))
@@ -281,7 +283,7 @@ class AstroBot(object):
         rg = RADIUS_EARTH * (1.0 - (math.sin(alpha - beta) /\
                                    (math.sin(alpha) + TINY_FLOAT_VALUE)))
 
-        return (ra, de, rg)
+        return (ra, de, radius, rg)
 
     def _hours_to_real(self, hours, minutes, seconds):
         return hours + minutes / 60.0 + seconds / 3600.0
@@ -340,6 +342,8 @@ class AstroBot(object):
         data["m2"] = '%d\'' % mm
         data["s2"] = '%.2f"' % ss
 
+        data["radius"] = "> Radius: %.3f deg\n\n" % info["radius"]
+
         imageLinks = "> Annotated image: [$annotated_image]($annotated_image)\n\n"
         data["image"] = Template(imageLinks).safe_substitute(info)
 
@@ -356,6 +360,7 @@ class AstroBot(object):
 
         message =  "This is an automatically generated comment.\n\n"
         message += "$coordinates: $hh $mm $ss , $h2 $m2 $s2\n\n"
+        message += "$radius"
         message += "$image"
         message += "$tags"
         message += "$links"
