@@ -10,14 +10,12 @@ import time
 import argparse
 import urlparse
 import subprocess
+import io
 from string import Template
 
 import urllib2
-import zipfile
-import tempfile
-from xml.dom.minidom import parseString
-from lxml import etree
 import requests
+from PIL import Image
 
 import credentials
 
@@ -81,6 +79,7 @@ class AstroBot(object):
                 print "[WARN]:", "Submission link doesn's seem to be an image"
                 self.skipped.append(thread.id)
                 return
+
             submission = self._upload(imageURL)
         else:
             submission = self.api.sub_status(submission_id, justdict=True)
@@ -258,28 +257,30 @@ class AstroBot(object):
         return False
 
     def _get_calibration(self, info):
-        """Download KML file of solved job and parse it."""
+        """Get calibration of solved job and parse it."""
 
-        path = "http://nova.astrometry.net/kml_file/" + str(info["job_id"])
-        file = urllib2.urlopen(path)
-        pkdata = file.read()
-        tmp = tempfile.NamedTemporaryFile()
-        tmp.write(pkdata)
-        tmp.flush()
+        calibration = self.api.send_request('jobs/%s/calibration' % info['job_id'])
+        ra = calibration['ra']
+        de = calibration['dec']
 
-        zf = zipfile.ZipFile(tmp.name)
-        data = zf.read("doc.kml")
+        # taken from wcs2kml
+        fd = urllib2.urlopen('http://nova.astrometry.net/extraction_image_full/' + str(info['job_id']))
+        image_file = io.BytesIO(fd.read())
+        im = Image.open(image_file)
+        max_span = max(im.size)
+        angular_scale = calibration['pixscale'] * max_span / 3600.0
 
-        zf.close()
-        file.close()
+        TINY_FLOAT_VALUE = 1.0e-8
+        RADIUS_EARTH = 6378135.0        # in meters
+        VIEWABLE_ANGULAR_SCALE = 50.0   # in degrees
 
-        #parse the xml you got from the file
-        dom = parseString(data)
+        alpha = 0.5 * VIEWABLE_ANGULAR_SCALE * (math.pi / 180.0)
+        beta = 0.5 * angular_scale * (math.pi / 180.0)
+        if (beta > alpha):
+            beta = alpha
+        rg = RADIUS_EARTH * (1.0 - (math.sin(alpha - beta) /\
+                                   (math.sin(alpha) + TINY_FLOAT_VALUE)))
 
-        longitude = dom.getElementsByTagName('longitude')[0].firstChild.nodeValue
-        ra = (float(longitude) + 180)/15.0
-        de = float(dom.getElementsByTagName('latitude')[0].firstChild.nodeValue)
-        rg = float(dom.getElementsByTagName('range')[0].firstChild.nodeValue)
         return (ra, de, rg)
 
     def _hours_to_real(self, hours, minutes, seconds):
@@ -300,7 +301,7 @@ class AstroBot(object):
     def _wikisky_link(self, info):
         link = "http://server4.wikisky.org/v2"
 
-        link += "?ra=" + str(info["rectascension"])
+        link += "?ra=" + str(info["rectascension"] / 15.0)
         link += "&de=" + str(info["declination"])
 
         zoom = 18 - round(math.log(info["range"] / 90.0) / math.log(2))
@@ -315,8 +316,8 @@ class AstroBot(object):
     def _googlesky_link(self, info):
         link = "http://www.google.com/sky/"
 
-        link += "#latitude=" + str(info["declination"])
-        link += "&longitude=" + str(info["rectascension"]*15 - 180)
+        link += "#longitude=" + str(info["rectascension"] - 180)
+        link += "&latitude=" + str(info["declination"])
 
         zoom = 20 - round(math.log(info["range"] / 90.0) / math.log(2))
         link += "&zoom=" + str(int(zoom))
@@ -329,7 +330,7 @@ class AstroBot(object):
         data = dict()
         data["coordinates"] = "> [Coordinates](http://en.wikipedia.org/wiki/Celestial_coordinate_system)"
 
-        (hh, mm, ss) = self._real_to_hours(info["rectascension"])
+        (hh, mm, ss) = self._real_to_hours(info["rectascension"] / 15.0)
         data["hh"] = '%d^h' % hh
         data["mm"] = '%d^m' % mm
         data["ss"] = '%.2f^s' % ss
