@@ -55,7 +55,9 @@ class AstroBot(object):
         self.skipped = []
 
         # blacklist of words on /r/astrophotography+apod
-        self.blacklist = ["moon", "lunar", "sun", "solar", "eclipse", "mercury", "venus", "mars", "jupiter", "uranus", "neptune"]
+        self.blacklist = ["moon", "lunar", "sun", "solar", "eclipse",\
+            "mercury", "venus", "mars", "jupiter", "uranus", "neptune", \
+            "trails", "panorama"]
 
         # whitelist of words on /r/astronomy+space+spaceporn
         self.whitelist = ["galaxy", "ngc", "comet", "nebula", "constellation", "iss",
