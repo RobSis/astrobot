@@ -12,6 +12,7 @@ import urlparse
 import subprocess
 import io
 from string import Template
+import logging
 
 import urllib2
 import requests
@@ -63,6 +64,14 @@ class AstroBot(object):
         self.whitelist = ["galaxy", "ngc", "comet", "nebula", "constellation", "iss",
                      "ison", "sky", "skies"]
 
+        # logging
+        self.logger = logging.getLogger("astrobot")
+        hdlr = logging.FileHandler("solved.log")
+        formatter = logging.Formatter('%(message)s')
+        hdlr.setFormatter(formatter)
+        self.logger.addHandler(hdlr)
+        self.logger.setLevel(logging.INFO)
+
     def _process(self, thread, submission_id = None):
         """Process the reddit submission"""
         self.info = dict()
@@ -85,6 +94,7 @@ class AstroBot(object):
             submission = self._upload(imageURL)
         else:
             submission = self.api.sub_status(submission_id, justdict=True)
+            submission['subid'] = submission_id
 
         self.info["job_id"] = submission['jobs'][0]
         self.info["image_id"] = submission['user_images'][0]
@@ -122,7 +132,7 @@ class AstroBot(object):
             thread.upvote() # can I do that?
             thread.save()
 
-            # TODO: Save the comment
+            self.logger.info("%s:%s" % (str(submission['subid']), thread.id))
 
 
     def _check_condition(self, submission):
@@ -231,6 +241,7 @@ class AstroBot(object):
             print "sleeping 5s"
             time.sleep(5)
             tries += 1
+        subStat['subid'] = sub_id
         return subStat
 
     # TODO: rewrite to python
