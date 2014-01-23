@@ -115,7 +115,10 @@ class AstroBot(object):
 
         if (self.info["annotated_image"] is not None):
             # Post to reddit
-            thread.add_comment(self._generate_comment(self.info))
+            advertise = False
+            if (thread.subreddit.display_name.lower() != "astrophotography"):
+                advertise = True
+            thread.add_comment(self._generate_comment(self.info, advertise))
             thread.upvote() # can I do that?
             thread.save()
 
@@ -328,7 +331,7 @@ class AstroBot(object):
 
         return link
 
-    def _generate_comment(self, info):
+    def _generate_comment(self, info, advertise):
         """Construct the comment for reddit."""
 
         data = dict()
@@ -367,12 +370,14 @@ class AstroBot(object):
         message += "$tags"
         message += "$links"
         message += "*****\n\n"
+        if (advertise):
+            message += "If this is your photo, consider x-posting to /r/astrophotography!\n\n"
         message += "*Powered by [Astrometry.net]("
         message += "http://nova.astrometry.net/user_images/$image_id)* | "
         message += "[*Feedback*]("
         message += "http://www.reddit.com/message/compose?to=astro-bot)\n"
         message += " | [FAQ](http://www.reddit.com/r/faqs/comments/1ninoq/uastrobot_faq/) "
-        message += " | &nbsp;^1 ) *Tags may overlap.*\n"
+        message += " | &nbsp;^1 ) *Tags may overlap.*"
 
         return Template(message).safe_substitute(data)
 
