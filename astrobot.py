@@ -84,13 +84,19 @@ class AstroBot(object):
         self.info["image_id"] = 0
         self.info["author"] = ""
 
-        if (not submission_id):
-            imageURL = self._parse_url(thread.url)
-            if (imageURL is None):
-                print "[WARN]:", "Submission link doesn's seem to be an image"
-                self.skipped.append(thread.id)
-                return
+        imageURL = self._parse_url(thread.url)
+        if (imageURL is None):
+            print "[WARN]:", "Submission link doesn's seem to be an image"
+            self.skipped.append(thread.id)
+            return
 
+        # get resolution of photo (used for computing range)
+        fd = urllib2.urlopen(imageURL)
+        image_file = io.BytesIO(fd.read())
+        im = Image.open(image_file)
+        self.info["image_size"] = im.size
+
+        if (not submission_id):
             submission = self._upload(imageURL)
         else:
             submission = self.api.sub_status(submission_id, justdict=True)
@@ -281,11 +287,7 @@ class AstroBot(object):
         de = calibration['dec']
         radius = calibration['radius']
 
-        # taken from wcs2kml
-        fd = urllib2.urlopen('http://nova.astrometry.net/extraction_image_full/' + str(info['job_id']))
-        image_file = io.BytesIO(fd.read())
-        im = Image.open(image_file)
-        max_span = max(im.size)
+        max_span = max(info['image_size'])
         angular_scale = calibration['pixscale'] * max_span / 3600.0
 
         TINY_FLOAT_VALUE = 1.0e-8
@@ -346,7 +348,8 @@ class AstroBot(object):
         """Construct the comment for reddit."""
 
         data = dict()
-        data["coordinates"] = "> [Coordinates](http://en.wikipedia.org/wiki/Celestial_coordinate_system)"
+
+        data["coordinates"] = "> Coordinates"
 
         (hh, mm, ss) = self._real_to_hours(info["rectascension"] / 15.0)
         data["hh"] = '%d^h' % hh
@@ -368,27 +371,29 @@ class AstroBot(object):
         else:
             data["tags"] = ""
 
-        data["google"] = "[Google sky](" + self._googlesky_link(info) + ")"
+        data["google"] = "[Google Sky](" + self._googlesky_link(info) + ")"
         data["wikisky"] = "[WIKISKY.ORG](" + self._wikisky_link(info) + ")"
         data["links"] = Template("> Links: $google | $wikisky\n\n").safe_substitute(data)
 
         data["image_id"] = info["image_id"]
 
-        message =  "This is an automatically generated comment.\n\n"
+        message =  "*This is an automatically generated comment.*\n\n"
+        message += "---\n\n"
         message += "$coordinates: $hh $mm $ss , $h2 $m2 $s2\n\n"
         message += "$radius"
         message += "$image"
         message += "$tags"
         message += "$links"
-        message += "*****\n\n"
+        message += "---\n\n"
         if (advertise):
-            message += "If this is your photo, consider x-posting to /r/astrophotography!\n\n"
-        message += "*Powered by [Astrometry.net]("
-        message += "http://nova.astrometry.net/user_images/$image_id)* | "
-        message += "[*Feedback*]("
-        message += "http://www.reddit.com/message/compose?to=astro-bot)\n"
-        message += " | [FAQ](http://www.reddit.com/r/faqs/comments/1ninoq/uastrobot_faq/) "
-        message += " | &nbsp;^1 ) *Tags may overlap.*"
+            message += "*If this is your photo, consider x-posting to /r/astrophotography!*\n\n"
+        message += "^Powered ^by [^Astrometry.net]("
+        message += "http://nova.astrometry.net/user_images/$image_id)"
+        message += " ^| [^Feedback]("
+        message += "http://www.reddit.com/message/compose?to=astro-bot)"
+        message += " ^| [^FAQ]("
+        message += "http://www.reddit.com/r/faqs/comments/1ninoq/uastrobot_faq/)"
+        message += " ^| ^1) ^Tags ^may ^overlap."
 
         return Template(message).safe_substitute(data)
 
