@@ -16,6 +16,7 @@ import logging
 
 import urllib2
 import requests
+from lxml import etree
 from PIL import Image
 
 import credentials
@@ -134,7 +135,11 @@ class AstroBot(object):
             advertise = False
             if (thread.subreddit.display_name.lower() != "astrophotography"):
                 advertise = True
-            thread.add_comment(self._generate_comment(self.info, advertise))
+
+            comment = self._generate_comment(self.info, advertise)
+            c = thread.add_comment(comment)
+            time.sleep(2)
+            c.edit(comment.replace('____id____', str(c.id)))
             thread.upvote() # can I do that?
             thread.save()
 
@@ -393,7 +398,9 @@ class AstroBot(object):
         message += "http://www.reddit.com/message/compose?to=astro-bot)"
         message += " ^| [^FAQ]("
         message += "http://www.reddit.com/r/faqs/comments/1ninoq/uastrobot_faq/)"
-        message += " ^| ^1) ^Tags ^may ^overlap."
+        message += " ^| ^1) ^Tags ^may ^overlap"
+        message += " ^| ^OP ^can [^delete]("
+        message += "http://www.reddit.com/message/compose?to=astro-bot&subject=delete&message=____id____) ^this ^comment."
 
         return Template(message).safe_substitute(data)
 
@@ -401,6 +408,35 @@ class AstroBot(object):
         running = True
         while running:
             try:
+                # react on deletion messages
+                for msg in self.praw.get_inbox():
+                    if "delete" in msg.subject and msg.new:
+                        print "[INFO]:", "Deletion request was received."
+                        remove_id = msg.body
+                        deleted = False
+                        me = self.praw.get_redditor("astro-bot")
+                        for c in me.get_comments(limit=None):
+                            if c.id == remove_id and msg.author == c.submission.author:
+                                c.delete()
+                                msg.mark_as_read()
+                                deleted = True
+                                break
+
+                        if deleted:
+                            print "[INFO]:", "Deletion successful."
+                            self.praw.send_message(msg.author, 'Comment removed',
+                                "The automatic comment for [your submission]"
+                                + "(" + str(c.submission.permalink) + ") " +
+                                "was removed.\n\nIf you want to disable the bot "
+                                "for all your future submissions, send me a PM!"
+                                "\n\nSorry for inconvenience.")
+                        else:
+                            self.praw.send_message(msg.author, 'Error while processing request',
+                                "It seems you don't have right to remove the comment. "
+                                "If you believe you do, send me a PM.")
+                            msg.mark_as_read()
+
+                # search subreddits
                 subreddits = self.praw.get_subreddit("astrophotography+astronomy+space+spaceporn+apod")
                 for submission in subreddits.get_new(limit = 100):
                     print "[INFO]:", "Processing submission", submission.permalink
