@@ -56,10 +56,10 @@ class AstroBot(object):
         # set of skipped submissions
         self.skipped = []
 
-        # blacklist of words on /r/astrophotography+apod
+        # blacklist of words on /r/astrophotography+astropix
         self.blacklist = ["moon", "lunar", "sun", "solar", "eclipse",\
-            "mercury", "venus", "mars", "jupiter", "uranus", "neptune", \
-            "trails", "panorama"]
+            "mercury", "venus", "mars", "jupiter", "saturn", "uranus", \
+            "neptune", "trails", "panorama"]
 
         # whitelist of words on /r/astronomy+space+spaceporn
         self.whitelist = ["galaxy", "ngc", "comet", "nebula", "constellation", "iss",
@@ -156,8 +156,7 @@ class AstroBot(object):
 
         blacklist_matches = sum(word in submission.title.lower() for word in self.blacklist)
         whitelist_matches = sum(word in submission.title.lower() for word in self.whitelist)
-        if submission.subreddit.display_name.lower() == "astrophotography" or\
-                submission.subreddit.display_name.lower() == "apod":
+        if submission.subreddit.display_name.lower() in ["astrophotography", "astropix"]:
             if blacklist_matches == 1 and whitelist_matches == 0:
                 return False
         else:
