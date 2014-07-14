@@ -177,8 +177,8 @@ class AstroBot(object):
         if url.netloc == "i.imgur.com":
             return rawUrl
 
-        # get direct url from imgur
-        if "imgur.com" in url.netloc and ("a/" not in url.path):
+        # get direct url from imgur (skip sets and albums)
+        if "imgur.com" in url.netloc and ("a/" not in url.path) and ("," not in url.path):
             newloc = "i." + url.netloc
             newpath = url.path + ".jpg"
             newpath = newpath.replace("gallery/","")
@@ -211,6 +211,15 @@ class AstroBot(object):
                 directUrl = tree.xpath('//img/@src')
                 if len(directUrl):
                     return "http://apod.nasa.gov/apod/" + directUrl[0]
+            except:
+                pass
+        if "wikipedia.org" in url.netloc and "File:" in url.path:
+            try:
+                file = urllib2.urlopen(url.geturl())
+                tree = etree.HTML(file.read())
+                directUrl = tree.xpath('//div[@class="fullMedia"]/a/@href')[0]
+                if len(directUrl):
+                    return "http:" + directUrl
             except:
                 pass
 
