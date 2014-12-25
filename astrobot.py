@@ -87,6 +87,8 @@ class AstroBot:
         """
         while True:
             try:
+                self.refresh()
+
                 self.read_inbox()
 
                 self.process_new()
@@ -99,6 +101,19 @@ class AstroBot:
                 print "[WARN]:", "API error. Sleeping for %d minute(s)." % (ERROR_TIME / 60)
                 print "[WARN]:", e
                 time.sleep(ERROR_TIME)
+            except (KeyboardInterrupt, EOFError), e:
+                print "\n(quit)"
+                return -1
+            except:
+                print "[WARN]:", "Sleeping for %d minute(s)." % (ERROR_TIME / 60)
+                print "[WARN]:", e
+                time.sleep(ERROR_TIME)
+
+    def refresh(self):
+        """
+        Refresh the imgur access token.
+        """
+        self.imgur.refresh_access_token()
 
     def process_new(self):
         """
@@ -207,7 +222,11 @@ class AstroBot:
                     "astrometry.net" in comment.body.lower():
                 return False
 
-        if (self._parse_url(post.url) is None):
+        try:
+            if (self._parse_url(post.url) is None):
+                return False
+        except urllib2.HTTPError as e:
+            print "[INFO]:", "Location can't be opened."
             return False
 
         return True
@@ -280,15 +299,20 @@ class AstroBot:
         url = urlparse.urlparse(rawUrl)
 
         # check whether the url is accessible
-        fd = urllib2.urlopen(rawUrl)
+        req = urllib2.Request(rawUrl, headers={'User-Agent' : credentials.USER_AGENT})
+        fd = urllib2.urlopen(req)
 
-        if url.netloc == "i.imgur.com":
+        p = url.path.lower()
+        if p.endswith(".jpg") or p.endswith(".jpeg") or p.endswith(".png") or p.endswith(".gif"):
             return rawUrl
 
         # get direct url from imgur (skip sets and albums)
-        if "imgur.com" in url.netloc and ("a/" not in url.path) and ("," not in url.path):
+        if "imgur.com" in url.netloc and "a/" not in url.path and ("," not in url.path) and ("gifv" not in url.path):
             newloc = "i." + url.netloc
-            newpath = url.path + ".jpg"
+            newpath = url.path
+            if newpath.endswith("/new"):
+                newpath.replace("/new", "")
+            newpath += ".jpg"
             newpath = newpath.replace("gallery/", "")
             newUrl = urlparse.ParseResult(url.scheme, newloc, newpath,
                         url.params, url.query, url.fragment)
@@ -331,10 +355,6 @@ class AstroBot:
                     return "http:" + directUrl
             except:
                 pass
-
-        p = url.path.lower()
-        if p.endswith(".jpg") or p.endswith(".jpeg") or p.endswith(".png"):
-            return rawUrl
 
         return None
 
@@ -505,9 +525,5 @@ class AstroBot:
 
 
 if __name__ == '__main__':
-    try:
-        bot = AstroBot()
-        bot.run()
-    except (KeyboardInterrupt, EOFError), e:
-        print "\n(quit)"
-        sys.exit(-1)
+    bot = AstroBot()
+    sys.exit(bot.run())
