@@ -104,7 +104,7 @@ class AstroBot:
             except (KeyboardInterrupt, EOFError), e:
                 print "\n(quit)"
                 return -1
-            except:
+            except Exception as e:
                 print "[WARN]:", "Sleeping for %d minute(s)." % (ERROR_TIME / 60)
                 print "[WARN]:", e
                 time.sleep(ERROR_TIME)
@@ -119,7 +119,7 @@ class AstroBot:
         """
         Find posts to process and send them to nova.Astrometry.net
         """
-        subreddits = self.praw.get_subreddit("astrophotography+astronomy+space+spaceporn+apod")
+        subreddits = self.praw.get_subreddit("astrophotography+astronomy+space+spaceporn+apod+spaceonly")
 
         # get last 100 posts
         for post in subreddits.get_new(limit=NEW_POSTS):
@@ -208,7 +208,7 @@ class AstroBot:
 
         blacklist_matches = sum(word in post.title.lower() for word in self.blacklist)
         whitelist_matches = sum(word in post.title.lower() for word in self.whitelist)
-        if post.subreddit.display_name.lower() in ["astrophotography", "apod"]:
+        if post.subreddit.display_name.lower() in ["astrophotography", "apod", "spaceonly"]:
             if not force and blacklist_matches == 1 and whitelist_matches == 0:
                 return False
         else:
@@ -274,7 +274,7 @@ class AstroBot:
 
         # annotated image
         metadata["author"] = ""
-        if ("astrophotography" in post.subreddit.display_name.lower()):
+        if ("astrophotography" in post.subreddit.display_name.lower() or "spaceonly" in post.subreddit.display_name.lower()):
             metadata["author"] = post.author.name
         metadata["annotated_image"] = self._upload_annotated(metadata["job_id"], metadata["author"])
 
@@ -490,7 +490,7 @@ class AstroBot:
                    " ^| [^Feedback]("
                    "http://www.reddit.com/message/compose?to=astro-bot)"
                    " ^| [^FAQ]("
-                   "http://www.reddit.com/r/faqs/comments/1ninoq/uastrobot_faq/)"
+                   "http://github.com/RobSis/astrobot/blob/master/FAQ.md)"
                    " ^| ^1) ^Tags ^may ^overlap"
                    " ^| ^OP ^can [^delete]("
                    "http://www.reddit.com/message/compose?to=astro-bot&subject=delete&message=____id____) ^this ^comment."
@@ -499,7 +499,7 @@ class AstroBot:
         # data model for the template
         model = dict()
         model["advertise"] = ""
-        if (metadata["post"].subreddit.display_name.lower() != "astrophotography"):
+        if (metadata["post"].subreddit.display_name.lower() != "astrophotography" and metadata["post"].subreddit.display_name.lower() != "spaceonly"):
             model["advertise"] = "*If this is your photo, consider x-posting to /r/astrophotography!*\n\n"
 
         model["coordinates"] = "> Coordinates: "
