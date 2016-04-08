@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+# encoding=utf8  
+# -*- coding: utf-8 -*-
+
 
 import client   # Astrometry.net API
 import praw     # Reddit API
@@ -21,6 +24,9 @@ import requests
 from lxml import etree
 from PIL import Image
 
+import ssl
+
+
 import credentials
 
 
@@ -31,12 +37,16 @@ REST_TIME = 180     # time to rest between each loop
 ERROR_TIME = 60     # time to rest on API error
 TTL = 10            # number of tries for every post
 
+reload(sys)
+sys.setdefaultencoding('utf8')
+
 
 class AstroBot:
     def __init__(self):
         # Imgur API
         self.imgur = pyimgur.Imgur(credentials.IMGUR_CLIENT_ID, \
                                 client_secret=credentials.IMGUR_CLIENT_SECRET)
+        self.context = ssl._create_unverified_context()
         authorized = False
         # TODO: automatize this
         while (not authorized):
@@ -119,12 +129,13 @@ class AstroBot:
         """
         Find posts to process and send them to nova.Astrometry.net
         """
-        subreddits = self.praw.get_subreddit("astrophotography+astronomy+space+spaceporn+apod+spaceonly")
+        subreddits = self.praw.get_subreddit("astrophotography+astronomy+space+spaceporn+apod")
 
         # get last 100 posts
         for post in subreddits.get_new(limit=NEW_POSTS):
             if self._check_condition(post):
-                self._send_for_solution(post)
+                if not self._send_for_solution(post):
+                    self.skipped.append(post.id)
             else:
                 self.skipped.append(post.id)
 
@@ -132,7 +143,8 @@ class AstroBot:
         for post in self.praw.user.get_hidden():
             post.unhide()
             if self._check_condition(post, force=True):
-                self._send_for_solution(post)
+                if not self._send_for_solution(post):
+                    self.skipped.append(post.id)
             else:
                 self.skipped.append(post.id)
 
@@ -206,9 +218,12 @@ class AstroBot:
         if post.saved:
             return False
 
+        if post.author and post.author.name.lower() == "eorequis":
+            return False
+
         blacklist_matches = sum(word in post.title.lower() for word in self.blacklist)
         whitelist_matches = sum(word in post.title.lower() for word in self.whitelist)
-        if post.subreddit.display_name.lower() in ["astrophotography", "apod", "spaceonly"]:
+        if post.subreddit.display_name.lower() in ["astrophotography", "apod"]:
             if not force and blacklist_matches == 1 and whitelist_matches == 0:
                 return False
         else:
@@ -239,9 +254,13 @@ class AstroBot:
         image_url = self._parse_url(post.url)
 
         # get resolution of photo (used for computing range)
-        fd = urllib2.urlopen(image_url)
-        image_file = io.BytesIO(fd.read())
-        im = Image.open(image_file)
+        fd = urllib2.urlopen(image_url, context=self.context)
+        try:
+            image_file = io.BytesIO(fd.read())
+            im = Image.open(image_file)
+        except IOError:
+            return False
+
 
         # upload
         print "[INFO]:", "Sending post", post.permalink, "to nova.Astrometry.net"
@@ -256,7 +275,8 @@ class AstroBot:
 
         if subid not in self.solving:
             self.solving[subid] = metadata
-            self.skipped.append(post.id)
+            return False
+        return True
 
     def _post_solved(self, metadata):
         """
@@ -274,7 +294,7 @@ class AstroBot:
 
         # annotated image
         metadata["author"] = ""
-        if ("astrophotography" in post.subreddit.display_name.lower() or "spaceonly" in post.subreddit.display_name.lower()):
+        if ("astrophotography" in post.subreddit.display_name.lower() and post.author):
             metadata["author"] = post.author.name
         metadata["annotated_image"] = self._upload_annotated(metadata["job_id"], metadata["author"])
 
@@ -300,7 +320,7 @@ class AstroBot:
 
         # check whether the url is accessible
         req = urllib2.Request(rawUrl, headers={'User-Agent' : credentials.USER_AGENT})
-        fd = urllib2.urlopen(req)
+        fd = urllib2.urlopen(req, context=self.context)
 
         p = url.path.lower()
         if p.endswith(".jpg") or p.endswith(".jpeg") or p.endswith(".png") or p.endswith(".gif"):
@@ -328,7 +348,7 @@ class AstroBot:
                         url.params, url.query, url.fragment)
 
                 try:
-                    file = urllib2.urlopen(newUrl.geturl())
+                    file = urllib2.urlopen(newUrl.geturl(), context=self.context)
                     tree = etree.HTML(file.read())
                     staticUrl = tree.xpath('//div[@id="allsizes-photo"]/img/@src')
                     if len(staticUrl):
@@ -338,7 +358,7 @@ class AstroBot:
 
         if "apod.nasa.gov" in url.netloc:
             try:
-                file = urllib2.urlopen(url.geturl())
+                file = urllib2.urlopen(url.geturl(), context=self.context)
                 tree = etree.HTML(file.read())
                 directUrl = tree.xpath('//img/@src')
                 if len(directUrl):
@@ -348,7 +368,7 @@ class AstroBot:
 
         if "wikipedia.org" in url.netloc and "File:" in url.path:
             try:
-                file = urllib2.urlopen(url.geturl())
+                file = urllib2.urlopen(url.geturl(), context=self.context)
                 tree = etree.HTML(file.read())
                 directUrl = tree.xpath('//div[@class="fullMedia"]/a/@href')[0]
                 if len(directUrl):
@@ -499,12 +519,12 @@ class AstroBot:
         # data model for the template
         model = dict()
         model["advertise"] = ""
-        if (metadata["post"].subreddit.display_name.lower() != "astrophotography" and metadata["post"].subreddit.display_name.lower() != "spaceonly"):
+        if (metadata["post"].subreddit.display_name.lower() != "astrophotography"):
             model["advertise"] = "*If this is your photo, consider x-posting to /r/astrophotography!*\n\n"
 
         model["coordinates"] = "> Coordinates: "
         model["coordinates"] += "%d^h %d^m %.2f^s , " % self._real_to_hours(metadata["rectascension"] / 15.0)
-        model["coordinates"] += "%d^o %d' %.2f\"\n\n" % self._real_to_hours(metadata["declination"])
+        model["coordinates"] += "%d° %d' %.2f\"\n\n" % self._real_to_hours(metadata["declination"])
 
         model["radius"] = "> Radius: %.3f deg\n\n" % metadata["radius"]
 
